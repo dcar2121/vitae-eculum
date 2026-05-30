@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Eculum Data Hider & Decoder</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+  }
+  h1, h2 {
+    margin-top: 30px;
+  }
+  input[type="file"] {
+    display: block;
+    margin-bottom: 10px;
+  }
+  textarea {
+    width: 100%;
+    height: 80px;
+  }
+  button {
+    margin-top: 10px;
+    padding: 8px 16px;
+  }
+  #images-preview {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  canvas {
+    display: none;
+  }
+  #output {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #f8f8f8;
+    border-radius: 4px;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>Eculum Data Hider & Decoder</h1>
+
+<!-- Embedding Section -->
+<h2>Embed Data into Image</h2>
+<label>Select Image to Embed Into:</label>
+<input type="file" id="embedImageInput" accept="image/*" />
+<label>Enter Message to Hide:</label>
+<textarea id="messageToHide" placeholder="Type your message here..."></textarea>
+<button onclick="embedData()">Embed & Generate Image</button>
+
+<div id="images-preview">
+  <div class="image-container">
+    <h4>Original Image</h4>
+    <img id="originalImagePreview" src="" alt="Original" width="200" style="border:1px solid #ccc;"/>
+  </div>
+  <div class="image-container">
+    <h4>Embedded Image</h4>
+    <img id="embeddedImagePreview" src="" alt="Embedded" width="200" style="border:1px solid #ccc;"/>
+  </div>
+</div>
+
+<!-- Decoding Section -->
+<h2>Decode Data from Image</h2>
+<label>Select Image with Hidden Data:</label>
+<input type="file" id="decodeImageInput" accept="image/*" />
+<button onclick="decodeData()">Decode Message</button>
+
+<div id="decodedResult"></div>
+
+<!-- Hidden Canvas for processing -->
+<canvas id="canvas"></canvas>
+
+<!-- Scripts -->
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// Utility: Load image into Image object
+function loadImage(file, callback) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => callback(img);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Show image preview
+function showImagePreview(img, elementId) {
+  document.getElementById(elementId).src = img.src;
+}
+
+// Embed data into image
+function embedData() {
+  const imageFile = document.getElementById('embedImageInput').files[0];
+  const message = document.getElementById('messageToHide').value;
+
+  if (!imageFile || !message) {
+    alert('Please select an image and enter a message.');
+    return;
+  }
+
+  loadImage(imageFile, (img) => {
+    // Show original image
+    showImagePreview(img, 'originalImagePreview');
+
+    // Draw image on canvas
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    // Get pixel data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Encode message length (32 bits)
+    const msgBytes = new TextEncoder().encode(message);
+    const msgLength = msgBytes.length;
+
+    // Store message length in first 4 pixels (RGBA)
+    data[0] = (msgLength >> 24) & 0xFF;
+    data[1] = (msgLength >> 16) & 0xFF;
+    data[2] = (msgLength >> 8) & 0xFF;
+    data[3] = msgLength & 0xFF;
+
+    // Embed message bytes into subsequent pixels
+    for (let i = 0; i < msgBytes.length; i++) {
+      // Store each byte in the red channel of subsequent pixels
+      data[(i + 1) * 4] = msgBytes[i];
+    }
+
+    // Update canvas with embedded data
+    ctx.putImageData(imageData, 0, 0);
+
+    // Show embedded image
+    const embeddedDataURL = canvas.toDataURL();
+    document.getElementById('embeddedImagePreview').src = embeddedDataURL;
+  });
+}
+
+// Decode data from image
+function decodeData() {
+  const imageFile = document.getElementById('decodeImageInput').files[0];
+  if (!imageFile) {
+    alert('Please select an image to decode.');
+    return;
+  }
+
+  loadImage(imageFile, (img) => {
+    // Draw image on canvas
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Read message length from first 4 pixels
+    const msgLength = 
+      (data[0] << 24) |
+      (data[1] << 16) |
+      (data[2] << 8) |
+      data[3];
+
+    // Read message bytes
+    const msgBytes = new Uint8Array(msgLength);
+    for (let i = 0; i < msgLength; i++) {
+      msgBytes[i] = data[(i + 1) * 4];
+    }
+
+    const message = new TextDecoder().decode(msgBytes);
+    document.getElementById('decodedResult').textContent = 'Decoded Message: ' + message;
+  });
+}
+</script>
+
+</body>
+</html>
